@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BATMAN: FEAR WITHIN - ABSOLUTE</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; transition: filter 3s cubic-bezier(0.4, 0, 0.2, 1); }
+        #ui { position: absolute; top: 30px; left: 30px; color: #0f0; pointer-events: none; text-shadow: 0 0 20px #000; font-family: 'Courier New', monospace; z-index: 100; letter-spacing: 2px;}
+        #subs { position: absolute; bottom: 15%; width: 100%; text-align: center; color: white; font-family: 'Courier New', serif; font-style: italic; font-size: 1.5em; text-shadow: 3px 3px 5px #000; z-index: 200; display: none; }
+        #vignette { position: fixed; width: 100%; height: 100%; box-shadow: inset 0 0 200px #000; pointer-events: none; z-index: 50; }
+        #lb-t, #lb-b { position: absolute; width: 100%; height: 0%; background: #000; z-index: 150; transition: height 1.2s ease; }
+        #lb-b { bottom: 0; }
+        canvas { filter: blur(0.4px); } /* Slight AA effect */
+    </style>
+</head>
+<body>
+    <div id="lb-t"></div><div id="lb-b"></div><div id="vignette"></div><div id="subs"></div>
+    <div id="ui">PHASE: <span id="chapter">I_FAILURE</span><br>TROPHIES: <span id="t">0</span>/200<br>POS: <span id="d">0,0</span></div>
+
+<script>
+const Game = {
+    s: { p: { x: 0, z: 0, yaw: 0, v: 0 }, chunks: {}, f: 0, skin: "#f00", rain: [], splat: [], cinemode: false, stateIdx: 0, trophies: 0 },
+    
+    // THE EVOLUTIONARY ARC
+    timeline: [
+        { id: "JASON", name: "I_FAILURE", txt: "JASON: You were my mentor... and you let me burn.", col: "#411", filter: "sepia(0.8) contrast(1.5) saturate(2)" },
+        { id: "JOKER", name: "II_MADNESS", txt: "JOKER: (Laughter) The gas is just a mirror, Bruce!", col: "#131", filter: "hue-rotate(85deg) brightness(0.7) contrast(1.6)" },
+        { id: "BRUCE", name: "III_TRUTH", txt: "BRUCE: Take off the mask. Look at what you've become.", col: "#fff", filter: "grayscale(1) contrast(2.5) brightness(0.6)" }
+    ],
+
+    init() {
+        this.c = document.createElement('canvas'); this.ctx = this.c.getContext('2d');
+        document.body.appendChild(this.c);
+        window.onresize = () => { this.c.width = window.innerWidth; this.c.height = window.innerHeight; };
+        window.onresize();
+        
+        // Auto-Load
+        const save = JSON.parse(localStorage.getItem('fear_save') || '{}');
+        if(save.z) { this.s.p = save.p; this.s.stateIdx = save.idx; this.s.trophies = save.t; }
+
+        for(let i=0; i<250; i++) this.s.rain.push({x: Math.random()*8000-4000, y: Math.random()*1200, z: Math.random()*5000});
+        this.bind(); this.loop();
+        setInterval(() => this.save(), 5000);
+    },
+
+    save() { localStorage.setItem('fear_save', JSON.stringify({p:this.s.p, idx:this.s.stateIdx, t:this.s.trophies})); },
+
+    triggerCinema() {
+        if(this.s.cinemode || this.s.stateIdx >= this.timeline.length) return;
+        const m = this.timeline[this.s.stateIdx];
+        this.s.cinemode = true; this.s.v = 0;
+        document.body.style.filter = m.filter;
+        document.getElementById('lb-t').style.height = '14%';
+        document.getElementById('lb-b').style.height = '14%';
+        const sub = document.getElementById('subs');
+        sub.style.display = 'block'; sub.innerText = m.txt;
+
+        setTimeout(() => {
+            this.s.cinemode = false; this.s.stateIdx++;
+            sub.style.display = 'none';
+            document.getElementById('lb-t').style.height = '0%';
+            document.getElementById('lb-b').style.height = '0%';
+            document.getElementById('chapter').innerText = this.timeline[Math.min(this.s.stateIdx, 2)].name;
+        }, 7000);
+    },
+
+    getChunk(cx, cz) {
+        const id = `${cx},${cz}`;
+        if (this.s.chunks[id]) return this.s.chunks[id];
+        const seed = Math.abs(Math.sin(cx * 12.9898 + cz * 78.233) * 43758.5453);
+        this.s.chunks[id] = { x: cx*3000+seed%2000, z: cz*3000+seed%2000, w: 400+seed%400, h: 1000+seed%3500, type: Math.random() > 0.95 ? 't' : 'b' };
+        return this.s.chunks[id];
+    },
+
+    project(x, y, z) {
+        const dx = x - this.s.p.x, dz = z - this.s.p.z;
+        const rx = dx * Math.cos(this.s.p.yaw) - dz * Math.sin(this.s.p.yaw);
+        const rz = dx * Math.sin(this.s.p.yaw) + dz * Math.cos(this.s.p.yaw);
+        if (rz <= 10) return null;
+        const s = (this.s.cinemode ? 1200 : 900) / rz;
+        return { x: rx * s + this.c.width/2, y: this.c.height/2 + (200 * s), s, rz };
+    },
+
+    draw() {
+        const { ctx, c, s } = this;
+        s.f++; ctx.fillStyle = "#010102"; ctx.fillRect(0,0,c.width,c.height);
+        
+        // ROAD REFLECTIONS
+        ctx.fillStyle = "#050508"; ctx.fillRect(0, c.height/2, c.width, c.height/2);
+        ctx.strokeStyle = "rgba(255,255,255,0.03)";
+        for(let i=0; i<10; i++) { ctx.strokeRect(0, c.height/2 + i*80, c.width, 1); }
+
+        const cur = this.timeline[Math.min(s.stateIdx, this.timeline.length-1)];
+        if(s.f % 3000 === 0) this.triggerCinema();
+
+        const pCX = Math.floor(s.p.x / 3000), pCZ = Math.floor(s.p.z / 3000);
+        const visible = [];
+        for(let i=-2; i<=2; i++) for(let j=-2; j<=2; j++) visible.push(this.getChunk(pCX+i, pCZ+j));
+        visible.sort((a,b) => ((b.x-s.p.x)**2+(b.z-s.p.z)**2) - ((a.x-s.p.x)**2+(a.z-s.p.z)**2));
+
+        visible.forEach(b => {
+            const p = this.project(b.x, 0, b.z);
+            if(!p) return;
+            const fog = Math.max(0, 1 - p.rz / 15000);
+            ctx.globalAlpha = fog;
+
+            if(b.type === 'b') {
+                ctx.fillStyle = cur.col;
+                ctx.fillRect(p.x - (b.w*p.s)/2, p.y, b.w*p.s, -b.h*p.s);
+                // Rim Lighting
+                ctx.strokeStyle = `rgba(255,255,255,${0.1 * fog})`;
+                ctx.lineWidth = p.s; ctx.strokeRect(p.x - (b.w*p.s)/2, p.y, b.w*p.s, -b.h*p.s);
+            } else if(!b.got) {
+                // RIDDLER TROPHY
+                ctx.strokeStyle = "#0f0"; ctx.shadowBlur = 20*p.s; ctx.shadowColor = "#0f0";
+                ctx.strokeRect(p.x-10*p.s, p.y-40*p.s, 20*p.s, 20*p.s);
+                if(Math.sqrt((b.x-s.p.x)**2+(b.z-s.p.z)**2)<200){ b.got=true; s.trophies++; }
+            }
+            ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        });
+
+        // 3D RAIN & LENS SPLATTER
+        ctx.strokeStyle = "rgba(200,220,255,0.1)";
+        s.rain.forEach(r => {
+            r.z -= 50; if(r.z < 0) { r.z = 5000; if(Math.random()>0.98) s.splat.push({x:Math.random()*c.width, y:Math.random()*c.height, a:1, r:2}); }
+            let p = this.project(r.x, r.y, r.z);
+            if(p) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y+40*p.s); ctx.stroke(); }
+        });
+        s.splat.forEach((d, i) => {
+            ctx.fillStyle = `rgba(255,255,255,${d.a*0.15})`;
+            ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill();
+            d.a -= 0.01; d.r += 0.4; if(d.a <= 0) s.splat.splice(i,1);
+        });
+
+        if(!s.cinemode) this.renderPlayer();
+        document.getElementById('t').innerText = s.trophies;
+        document.getElementById('d').innerText = `${Math.floor(s.p.x)},${Math.floor(s.p.z)}`;
+    },
+
+    renderPlayer() {
+        const cx = this.c.width/2, cy = this.c.height*0.84, breathe = Math.sin(this.s.f/12)*6;
+        this.ctx.shadowBlur = 50; this.ctx.shadowColor = this.s.skin;
+        this.ctx.fillStyle = "#000";
+        this.ctx.beginPath(); this.ctx.moveTo(cx-60, cy+200); this.ctx.quadraticCurveTo(cx, cy-90+breathe, cx+60, cy+200); this.ctx.fill();
+        this.ctx.fillStyle = this.s.skin;
+        this.ctx.fillRect(cx-18, cy-110+breathe, 12, 4); this.ctx.fillRect(cx+6, cy-110+breathe, 12, 4);
+    },
+
+    bind() {
+        let lx = 0, ly = 0, active = false;
+        window.addEventListener('touchstart', e => { if(this.s.cinemode) return; active = true; lx = e.touches[0].clientX; ly = e.touches[0].clientY; });
+        window.addEventListener('touchmove', e => {
+            if(!active || this.s.cinemode) return;
+            const t = e.touches[0];
+            const dx = t.clientX - lx, dy = t.clientY - ly;
+            const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 60);
+            const angle = Math.atan2(dy, dx);
+            this.s.p.yaw = angle + Math.PI/2;
+            this.s.v = (dist / 60) * 85;
+        });
+        window.addEventListener('touchend', () => { active = false; this.s.v = 0; });
+    },
+
+    loop() {
+        if(!this.s.cinemode) {
+            this.s.p.x += Math.sin(this.s.p.yaw) * this.s.v;
+            this.s.p.z += Math.cos(this.s.p.yaw) * this.s.v;
+        }
+        this.draw(); requestAnimationFrame(() => this.loop());
+    }
+};
+Game.init();
+</script>
+</body>
+</html>
