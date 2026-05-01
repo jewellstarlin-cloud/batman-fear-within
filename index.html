@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BATMAN: FEAR WITHIN</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; touch-action: none; color: #fff; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #0f0; pointer-events: none; text-shadow: 0 0 10px #0f0; z-index: 10; }
+        #store-btn { position: absolute; top: 20px; right: 20px; background: #111; color: #f00; border: 1px solid #f00; padding: 10px; border-radius: 5px; cursor: pointer; z-index: 100; }
+        #shop { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); border: 2px solid #f00; padding: 20px; width: 80%; display: none; z-index: 200; text-align: center; }
+        .item { border: 1px solid #444; padding: 15px; margin: 10px; cursor: pointer; border-radius: 5px; }
+        .item:hover { background: rgba(255,0,0,0.2); border-color: #f00; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="trophy-ui">RIDDLER TROPHIES: 0/200</div>
+        <div id="dist-ui">DISTANCE: 0m</div>
+    </div>
+
+    <div id="store-btn" onclick="toggleShop()">🛒 SKINS</div>
+
+    <div id="shop">
+        <h3>WAYNE TECH ARMORY</h3>
+        <div class="item" onclick="buy('HELLBAT','#ff0')">HELLBAT SUIT ($4.99)</div>
+        <div class="item" onclick="buy('LAUGHS','#f0f')">THE BATMAN WHO LAUGHS ($9.99)</div>
+        <button onclick="toggleShop()" style="background:red; color:white; border:none; padding:10px; width:100%;">EXIT</button>
+    </div>
+
+<script>
+const Game = {
+    state: {
+        p: { x: 0, z: 0, yaw: 0, v: 0 },
+        chunks: {}, trophies: 0, frame: 0, skin: "#f00", shake: 0, activeBoss: 0
+    },
+
+    bosses: [
+        { id: "JOKER", x: 2000, z: 4000, col: "#0f0" },
+        { id: "JASON", x: -5000, z: 10000, col: "#f00" },
+        { id: "BRUCE", x: 0, z: 30000, col: "#fff" }
+    ],
+
+    init() {
+        this.load();
+        this.c = document.createElement('canvas');
+        this.ctx = this.c.getContext('2d');
+        document.body.appendChild(this.c);
+        window.onresize = () => { this.c.width = window.innerWidth; this.c.height = window.innerHeight; this.fov = 400; };
+        window.onresize();
+        this.bind();
+        this.loop();
+        setInterval(() => this.save(), 3000); // Auto-save every 3 seconds
+    },
+
+    save() {
+        localStorage.setItem('bat_save', JSON.stringify({t:this.state.trophies, s:this.state.skin, x:this.state.p.x, z:this.state.p.z}));
+    },
+
+    load() {
+        const d = JSON.parse(localStorage.getItem('bat_save') || '{}');
+        if(d.t !== undefined) { this.state.trophies = d.t; this.state.skin = d.s; this.state.p.x = d.x; this.state.p.z = d.z; }
+    },
+
+    getChunk(cx, cz) {
+        const id = `${cx},${cz}`;
+        if (this.state.chunks[id]) return this.state.chunks[id];
+        const b = [];
+        for(let i=0; i<3; i++) b.push({x:cx*2000+Math.random()*1500, z:cz*2000+Math.random()*1500, w:100, h:700, type:'b'});
+        b.push({x:cx*2000+1000, z:cz*2000+1000, type:'t', got:false});
+        this.state.chunks[id] = b; return b;
+    },
+
+    project(v) {
+        const dx = v.x - this.state.p.x, dz = v.z - this.state.p.z;
+        const rx = dx * Math.cos(this.state.p.yaw) - dz * Math.sin(this.state.p.yaw);
+        const rz = dx * Math.sin(this.state.p.yaw) + dz * Math.cos(this.state.p.yaw);
+        if (rz <= 20) return null;
+        const s = this.fov / rz;
+        return { x: rx * s + this.c.width/2, y: this.c.height/2 + (150*s), s, a: Math.min(1, 4000/(rz*2)) };
+    },
+
+    draw() {
+        const { ctx, c, state } = this;
+        state.frame++;
+        ctx.fillStyle = "#010105"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.save();
+        if(state.shake > 0) { ctx.translate(Math.random()*state.shake, Math.random()*state.shake); state.shake *= 0.9; }
+
+        const pCX = Math.floor(state.p.x / 2000), pCZ = Math.floor(state.p.z / 2000);
+        const els = [];
+        for(let x=-2; x<=2; x++) for(let z=-2; z<=2; z++) this.getChunk(pCX+x, pCZ+z).forEach(e => els.push(e));
+        
+        const currentBoss = this.bosses[state.activeBoss];
+        if(currentBoss) els.push({...currentBoss, type:'boss'});
+
+        els.forEach(el => {
+            const p = this.project(el); if(!p) return;
+            if(el.type === 'b') {
+                ctx.fillStyle = `rgba(20,20,40,${p.a})`; ctx.fillRect(p.x-(el.w*p.s)/2, p.y, el.w*p.s, -el.h*p.s);
+            } else if(el.type === 't' && !el.got) {
+                // RIDDLER TROPHY TEXTURE
+                ctx.strokeStyle = "#0f0"; ctx.shadowBlur = 15*p.s; ctx.shadowColor = "#0f0";
+                ctx.lineWidth = 2; ctx.strokeRect(p.x-5*p.s, p.y-20*p.s, 10*p.s, 10*p.s);
+                if(Math.sqrt((el.x-state.p.x)**2+(el.z-state.p.z)**2)<150){ el.got=true; state.trophies++; state.shake = 5; }
+            } else if(el.type === 'boss') {
+                ctx.fillStyle = el.col; ctx.shadowBlur = 50*p.s; ctx.shadowColor = el.col;
+                ctx.fillRect(p.x-25*p.s, p.y, 50*p.s, -500*p.s);
+            }
+        });
+
+        this.renderPlayer(); ctx.restore();
+        document.getElementById('trophy-ui').innerText = `RIDDLER TROPHIES: ${state.trophies}/200`;
+        document.getElementById('dist-ui').innerText = `DISTANCE: ${Math.floor(state.p.z/10)}m`;
+    },
+
+    renderPlayer() {
+        const cx = this.c.width/2, cy = this.c.height * 0.85;
+        this.ctx.fillStyle = "#000"; this.ctx.shadowBlur = 30; this.ctx.shadowColor = this.state.skin;
+        this.ctx.beginPath(); this.ctx.moveTo(cx-40, cy+180); this.ctx.lineTo(cx, cy-40); this.ctx.lineTo(cx+40, cy+180); this.ctx.fill();
+        this.ctx.fillStyle = this.state.skin; this.ctx.fillRect(cx-14, cy-90, 8, 3); this.ctx.fillRect(cx+6, cy-90, 8, 3);
+    },
+
+    bind() {
+        let lx = 0;
+        window.addEventListener('touchstart', e => { lx = e.touches.clientX; this.state.p.v = 40; });
+        window.addEventListener('touchmove', e => { this.state.p.yaw += (e.touches.clientX - lx) * 0.01; lx = e.touches.clientX; });
+        window.addEventListener('touchend', () => { this.state.p.v = 0; });
+    },
+
+    loop() {
+        this.state.p.x += Math.sin(this.state.p.yaw) * this.state.p.v;
+        this.state.p.z += Math.cos(this.state.p.yaw) * this.state.p.v;
+        this.draw(); requestAnimationFrame(() => this.loop());
+    }
+};
+
+function toggleShop() { const s = document.getElementById('shop'); s.style.display = (s.style.display === 'block') ? 'none' : 'block'; }
+function buy(name, color) { alert("Processing Store Request..."); Game.state.skin = color; toggleShop(); Game.save(); }
+Game.init();
+</script>
+</body>
+</html>
