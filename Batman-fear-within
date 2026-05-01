@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BATMAN: FEAR WITHIN - TRUE 3D</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; touch-action: none; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #f00; pointer-events: none; z-index: 10; text-shadow: 0 0 10px #000; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>BATMAN: FEAR WITHIN</h1>
+        <p>PHASE: NIGHTMARE_ACT_1</p>
+    </div>
+
+    <!-- The 3D Engine -->
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com" } }
+    </script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// 1. ENGINE SETUP
+const scene = new THREE.Scene();
+scene.fog = THREE.FogExp2(0x000000, 0.0015);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// 2. THE WORLD (Road & Buildings)
+const floorGeo = new THREE.PlaneGeometry(2000, 10000);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.1 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// Generate Industrial Buildings
+for (let i = 0; i < 150; i++) {
+    const h = 200 + Math.random() * 800;
+    const w = 100 + Math.random() * 100;
+    const box = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, w),
+        new THREE.MeshStandardMaterial({ color: 0x111111 })
+    );
+    box.position.set(Math.random() > 0.5 ? 400 + Math.random()*200 : -400 - Math.random()*200, h/2, Math.random() * -10000);
+    box.castShadow = true;
+    scene.add(box);
+}
+
+// 3. BUILD THE NIGHTMARE BATMAN (Procedural Model)
+const playerGroup = new THREE.Group();
+
+// Body & Cape
+const body = new THREE.Mesh(new THREE.ConeGeometry(8, 30, 4), new THREE.MeshBasicMaterial({color: 0x000000}));
+playerGroup.add(body);
+
+// Head & Ears
+const head = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 6), new THREE.MeshBasicMaterial({color: 0x000000}));
+head.position.y = 15;
+playerGroup.add(head);
+
+const earL = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 1), new THREE.MeshBasicMaterial({color: 0x000000}));
+earL.position.set(-2, 20, 0); playerGroup.add(earL);
+const earR = new THREE.Mesh(new THREE.BoxGeometry(1, 6, 1), new THREE.MeshBasicMaterial({color: 0x000000}));
+earR.position.set(2, 20, 0); playerGroup.add(earR);
+
+// Red Eye Lenses
+const eyes = new THREE.PointLight(0xff0000, 50, 50);
+eyes.position.set(0, 16, -5);
+playerGroup.add(eyes);
+
+scene.add(playerGroup);
+
+// 4. LIGHTING & RAIN
+const ambient = new THREE.AmbientLight(0xffffff, 0.1);
+scene.add(ambient);
+
+const rainGeo = new THREE.BufferGeometry();
+const rainCount = 1000;
+const rainPos = new Float32Array(rainCount * 3);
+for(let i=0; i<rainCount*3; i++) rainPos[i] = Math.random() * 2000 - 1000;
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({color: 0xaaaaaa, size: 0.5}));
+scene.add(rain);
+
+// 5. CONTROLS
+let speed = 0, yaw = 0, lx = 0;
+window.addEventListener('touchstart', e => { lx = e.touches[0].clientX; speed = 12; });
+window.addEventListener('touchmove', e => { yaw -= (e.touches[0].clientX - lx) * 0.005; lx = e.touches[0].clientX; });
+window.addEventListener('touchend', () => { speed = 0; });
+
+// 6. LOOP
+function animate() {
+    requestAnimationFrame(animate);
+    
+    // Player Movement
+    playerGroup.position.z -= speed * Math.cos(yaw);
+    playerGroup.position.x -= speed * Math.sin(yaw);
+    playerGroup.rotation.y = yaw;
+
+    // Camera follow
+    camera.position.set(playerGroup.position.x, 60, playerGroup.position.z + 150);
+    camera.lookAt(playerGroup.position.x, 30, playerGroup.position.z - 100);
+
+    // Rain Loop
+    rain.position.z = playerGroup.position.z;
+    
+    renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
